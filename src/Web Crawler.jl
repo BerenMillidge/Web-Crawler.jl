@@ -1,5 +1,10 @@
-module Web Crawler
+#a module for a web crawler. sort out comments and stuff in a bit
 
-# package code goes here
+module WebCrawler
 
-end # module
+export crawl, begin_crawl. setup_crawler
+
+include("crawler.jl")
+
+
+end #module
