@@ -5,6 +5,7 @@ using HTTP
 using Gumbo
 using AbstractTrees
 using ArgParse
+using JLD
 
 #define our crawler
 
@@ -79,45 +80,22 @@ function crawl(crawler::Crawler, num_iterations::Integer=10, verbose=true, save=
             if verbose==true
                 println("requesting $url")
             end 
-            try
-                
-                response = HTTP.get(url)
-                #println(response)
-                #check success code and procede if correct
-                if response.status==successCode
-                    # okay, here's what we do. we do our parsing string here
-                    res = String(response.body)
-                    doc = parsehtml(res)
-                    if verbose == true
-                        println("response received and is successful")
-                    end
 
-                    #if we succeed we update our links
-                    crawler.content[url] = res
+			#we do our processing
+			#we should really check for failure conditions here, and make the fucntions
+			#suitably type stable for decent performance
+			response = pingUrl(url)
+			doc = parseResponse(response)
+			links = extractLinks(doc)
 
-                    #print(typeof(url))
-                   # println("")
-                   # println("type of crawler.urlsvisited ", typeof(crawler.urlsVisited))
-                   # println("url: ", url)
-                   # println(crawler.urlsVisited)
-                    push!(crawler.urlsVisited, url)
+			#add the stuff to the crawler
+			push!(crawler.urlsVisited, url)
+			append!(crawler.urlsToCrawl, links)
+			crawler.content[url] = doc
 
-                    #we go through all elements get links
-                    for elem in PostOrderDFS(doc.root)
-                        if typeof(elem) == Gumbo.HTMLElement{:a}
-                            link=get(elem.attributes, "href","#")
-                            if link != "#"
-                                #then it's succeeded we have link
-                               # println(typeof(link))
-                                push!(crawler.urlsToCrawl, link)
-                            end
-                        end
-                    end
-                end
-                if url in crawler.urlsToCrawl
+            if url in crawler.urlsToCrawl
                     println("repeat url")
                     num_iterations +=1
-                end
             end
         end
     end
@@ -126,11 +104,90 @@ function crawl(crawler::Crawler, num_iterations::Integer=10, verbose=true, save=
     #we return stuff and save
     
     if save==true
-        #we save the files somewhere
+        #we just have a default here
+		filename = "JuliaCrawler"
+		saveCrawler(crawler, filename)
     end
     return crawler.content, crawler.urlsVisited
 end
 
+#let's split this huge death function up into smaller ones so it makes sense
+
+function pingUrl(url::AbstractString)
+	#this is where we do our try catch logic, to make it simple
+	try
+		response = HTTP.get(url)
+		return response
+	catch
+		return nothing
+	end
+	end
+	#this function is terrible and not type stable. we should deal with this somehow!
+		
+function parseResponse(response::Response)
+	res = String(response.body)
+	#do anything else we need here
+	doc = parsehtml(res)
+	return doc
+	end
+
+function extractLinks(doc::Gumbo.HTMLDocument)
+	#get links array
+	links = AbstractString[]
+	const link_key = "href"
+	const fail_key = "#"
+	for elem in PostOrderDFC(doc.root)
+		if typeof(elem)==Gumbo.HTMLElement(:a}
+			link=get(elem.attributes, link_key, fail_key)
+			if link != "#"
+				push!(links, link)
+			end
+		end
+	end
+	return links
+end
+	
+function reset_crawler(crawler::Crawler)
+	#this function just resets all the stuff and clears it
+	empty!(crawler.urlsVisited)
+	empty!(crawler.urlsToCrawl)
+	crawler.content = Dict()
+	return crawler
+	end
+
+# dagnabbi we don't have wifi and we have no idea how to actually save thi sstuff. I guess we got to look it up via phone?
+
+#okay, now our big function with the logic
+#okay, we sorted out that, which is great to be honest. but now we'regoing to have to figure out how to do files and the like, which is just going to be annoying I think
+
+#let's try this - we're using JLD
+
+function saveCrawler(crawler::Crawler, filename::String, startUrl=true, urlsVisited=true, urlsToCrawl=false, content=true)
+	#I think that's all the thing, so we can decide what to add
+	crawlerDict = Dict()
+	if startUrl==true
+		crawlerDict["starting_url"] = crawler.startUrl
+	end
+	if urlsVisited==true
+		crawlerDict["urls_visited"]= crawler.urlsVisited
+	end
+	if urlsToCrawl==true
+		crawlerDIct["urls_to_crawl"] = crawler.urlsToCrawl
+	end
+	if content==true
+		crawlerDict["content"] = crawler.content
+	end
+	fname = filename + ".jld"
+	save(fname, crawlerDict)
+	end
+
+# what else do we need to do. we need to integrate this. somehow into the main crawl function. we can do that pretty soon I think/hope
+
+# at some point I could implement threading and stuff, but not for now. this isj ust a fairly straightforward image crawler. hopefully. I dno't even know really
+
+# not sure how we're going to implement that
+#maybe we'll have markov chains somewhere?
+	
 
 # this is our arg parse settings so we can see if it works and write it up properly
 
